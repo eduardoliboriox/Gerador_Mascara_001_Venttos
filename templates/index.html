@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Gerador de Máscara - Venttos MES</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: white;
+            padding: 20px;
+            max-width: 800px;
+            margin: auto;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        select, input[type="text"], textarea {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px;
+            margin: 5px 0 15px 0;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #32406b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px 5px 5px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+
+        button:hover {
+            background-color: #47527f;
+        }
+
+        .resultado {
+            background-color: #f2f2f2;
+            padding: 15px;
+            margin-top: 20px;
+            width: 100%;
+            max-width: 600px;
+            white-space: pre-wrap;
+            box-sizing: border-box;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 15px;
+            }
+            select, input[type="text"], textarea, button {
+                max-width: 100%;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h2>GERADOR DE MÁSCARA - VENTTOS M.E.S</h2>
+
+    <form id="formulario">
+        <label>Cliente:</label><br>
+        <select name="cliente" id="cliente" required onchange="atualizarModelos()">
+            {% for cliente in clientes %}
+                <option value="{{ cliente }}">{{ cliente }}</option>
+            {% endfor %}
+        </select><br>
+
+        <label>Modelo:</label><br>
+        <select name="modelo" id="select_modelo"></select>
+        <input type="text" name="modelo" id="input_modelo" style="display:none;"><br>
+
+        <label>OP (5 letras + 6 números):</label><br>
+        <input type="text" name="op" id="op" required maxlength="11"
+       style="text-transform: uppercase;"
+       oninput="this.value = this.value.toUpperCase();"><br>
+
+        <label>Já existe uma máscara?</label><br>
+        <input type="radio" name="tem_mascara" value="sim" onclick="mostrarCampoMascara(true)"> Sim
+        <input type="radio" name="tem_mascara" value="nao" checked onclick="mostrarCampoMascara(false)"> Não<br>
+
+        <div id="div_mascara" style="display:none;">
+            <label>Digite a máscara atual:</label><br>
+            <input type="text" name="mascara_atual"><br>
+        </div>
+
+        <button type="submit">Gerar Máscara</button>
+        <button type="button" onclick="limparCampos()">Limpar Campos</button>
+        <button type="button" onclick="copiarMascara()">Copiar Máscara</button>
+    </form>
+
+    <div class="resultado" id="resultado"></div>
+
+    <script>
+        const modelosData = {{ modelos | tojson | safe }};
+        const selectModelo = document.getElementById("select_modelo");
+        const inputModelo = document.getElementById("input_modelo");
+
+        function atualizarModelos() {
+            const cliente = document.getElementById("cliente").value;
+            const lista = modelosData[cliente];
+
+            if (lista && lista.length > 0) {
+                selectModelo.innerHTML = "";
+                lista.forEach(m => {
+                    const opt = document.createElement("option");
+                    opt.value = m;
+                    opt.text = m;
+                    selectModelo.appendChild(opt);
+                });
+                selectModelo.style.display = "inline";
+                inputModelo.style.display = "none";
+            } else {
+                selectModelo.style.display = "none";
+                inputModelo.style.display = "inline";
+                inputModelo.value = "";
+            }
+        }
+
+        function mostrarCampoMascara(exibir) {
+            document.getElementById("div_mascara").style.display = exibir ? "block" : "none";
+        }
+
+        function limparCampos() {
+            document.getElementById("formulario").reset();
+            atualizarModelos();
+            mostrarCampoMascara(false);
+            document.getElementById("resultado").innerText = "";
+        }
+
+        function copiarMascara() {
+            const resultado = document.getElementById("resultado").innerText;
+
+            if (!resultado.includes("MÁSCARA CORRETA")) {
+                alert("❌ Nenhuma máscara gerada para copiar.");
+                return;
+            }
+
+            const linhas = resultado.split("\n");
+            const indice = linhas.indexOf("✅ MÁSCARA CORRETA:");
+            const mascara = indice !== -1 ? linhas[indice + 1] : "";
+
+            if (!mascara) {
+                alert("❌ Não foi possível identificar a máscara.");
+                return;
+            }
+
+            navigator.clipboard.writeText(mascara).then(() => {
+                alert("✅ Máscara copiada para a área de transferência!");
+            }).catch(() => {
+                alert("❌ Erro ao copiar.");
+            });
+        }
+
+        document.getElementById("formulario").onsubmit = async function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            if (selectModelo.style.display === "none") {
+                formData.set("modelo", inputModelo.value);
+            } else {
+                formData.set("modelo", selectModelo.value);
+            }
+
+            const res = await fetch("/gerar", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await res.json();
+            let out = "";
+
+            if (data.erro) {
+                out = data.erro;
+            } else {
+                out += data.validacao_op + "\n\n";
+                out += "✅ MÁSCARA CORRETA:\n" + data.mascara + "\n";
+
+                if (data.comparacao) {
+                    out += "\n🔍 Comparando com a máscara digitada:\n";
+                    data.comparacao.forEach(erro => {
+                        out += erro + "\n";
+                    });
+                }
+            }
+
+            document.getElementById("resultado").innerText = out;
+        }
+
+        window.onload = atualizarModelos;
+    </script>
+</body>
+</html>
