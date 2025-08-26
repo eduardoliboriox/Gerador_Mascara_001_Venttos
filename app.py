@@ -67,9 +67,12 @@ def gerar_mascara_exemplo(cliente, modelo):
         return mascara, ""
 
     elif cliente == "ELECTROLUX":
+        # Regra corrigida: <modelo_sem_A>****25*****
         if not modelo.startswith("A") or len(modelo) != 9:
             return None, "❌ Modelo ELECTROLUX inválido. Deve ser no formato A13445103."
-        return modelo[1:] + "*" * 11, ""
+        base = modelo[1:]  # remove o "A"
+        mascara = f"{base}****25*****"
+        return mascara, ""
 
     elif cliente == "LG":
         if not modelo.startswith("EBR") or len(modelo) != 11:
