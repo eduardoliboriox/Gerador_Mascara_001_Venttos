@@ -51,6 +51,12 @@
             border-radius: 4px;
         }
 
+        .exemplo {
+            font-size: 0.9em;
+            color: #444;
+            margin: -10px 0 15px 0;
+        }
+
         @media (max-width: 600px) {
             body {
                 padding: 15px;
@@ -76,6 +82,7 @@
         <label>Modelo:</label><br>
         <select name="modelo" id="select_modelo"></select>
         <input type="text" name="modelo" id="input_modelo" style="display:none;"><br>
+        <div class="exemplo" id="exemploMascara" style="display:none;"></div>
 
         <label>OP (5 letras + 6 números):</label><br>
         <input type="text" name="op" id="op" required maxlength="11"
@@ -102,6 +109,7 @@
         const modelosData = {{ modelos | tojson | safe }};
         const selectModelo = document.getElementById("select_modelo");
         const inputModelo = document.getElementById("input_modelo");
+        const exemploMascara = document.getElementById("exemploMascara");
 
         function atualizarModelos() {
             const cliente = document.getElementById("cliente").value;
@@ -121,6 +129,14 @@
                 selectModelo.style.display = "none";
                 inputModelo.style.display = "inline";
                 inputModelo.value = "";
+            }
+
+            // Mostrar exemplo para MIDEA
+            if (cliente === "MIDEA") {
+                exemploMascara.style.display = "block";
+                exemploMascara.innerText = "📌 Regra MIDEA: **25*****<modelo>*\nEx: **25*****79037308*";
+            } else {
+                exemploMascara.style.display = "none";
             }
         }
 
