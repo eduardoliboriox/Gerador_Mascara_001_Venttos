@@ -16,18 +16,15 @@ def analisar_mascara_errada(mascara_atual: str, expected_len: int, expected_has_
     derivados da máscara correta do cliente (tamanho efetivo e presença de [NUMOP,6]).
     """
     erros = []
-    # Tamanho efetivo (conta [NUMOP,6] como 6)
     if tamanho_efetivo(mascara_atual) != expected_len:
         erros.append(f"❌ Tamanho errado: precisa ter {expected_len} caracteres.")
 
-    # Presença (ou não) de [NUMOP,6]
     has_numop = "[NUMOP,6]" in mascara_atual
     if expected_has_numop and not has_numop:
         erros.append("❌ Faltando '[NUMOP,6]' na máscara.")
     if not expected_has_numop and has_numop:
         erros.append("❌ '[NUMOP,6]' não deveria estar presente para este cliente.")
 
-    # Pelo menos um asterisco (regra geral)
     if '*' not in mascara_atual:
         erros.append("❌ A máscara precisa conter asteriscos.")
 
@@ -44,7 +41,6 @@ def validar_op(op: str) -> bool:
 
 def gerar_mascara_exemplo(cliente, modelo):
     if cliente == "HARMAN":
-        # Para qualquer modelo Harman, máscara = VEN10100000 + modelo + '*' até 28 caracteres
         prefixo = "VEN10100000"
         total_length = 28
         mascara = prefixo + modelo
@@ -64,7 +60,11 @@ def gerar_mascara_exemplo(cliente, modelo):
         return digitos + "[NUMOP,6]" + "*" * 13, ""
 
     elif cliente == "MIDEA":
-        return "**25*****790372484", ""
+        # Regra corrigida: **25*****<modelo>*
+        if not modelo.isdigit() or len(modelo) != 8:
+            return None, "❌ Modelo MIDEA inválido. Deve conter exatamente 8 dígitos."
+        mascara = f"**25*****{modelo}*"
+        return mascara, ""
 
     elif cliente == "ELECTROLUX":
         if not modelo.startswith("A") or len(modelo) != 9:
@@ -105,7 +105,7 @@ def index():
         "ELECTROLUX", "MIDEA"
     ])
 
-    modelos_harman = ["240105", "240092", "240094"]  # pode adicionar outros depois
+    modelos_harman = ["240105", "240092", "240094"]
     modelos_tcl = sorted(["883252", "883257", "883258", "883260", "884949", "884954"])
     modelos_hq = [f"VEHQ10000T{str(i).zfill(6)}" for i in range(1, 81)]
     modelos_midea = sorted(["79037248", "79037267", "79037268", "79037308"])
@@ -145,7 +145,7 @@ def index():
 @app.route('/gerar', methods=["POST"])
 def gerar():
     cliente = request.form["cliente"]
-    modelo = request.form["modelo"].strip().split(" - ")[0]  # só o código
+    modelo = request.form["modelo"].strip().split(" - ")[0]
     op = request.form["op"].strip().upper()
     tem_mascara = request.form.get("tem_mascara") == "sim"
     mascara_atual = request.form.get("mascara_atual", "").strip()
