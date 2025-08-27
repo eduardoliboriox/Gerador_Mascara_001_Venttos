@@ -5,16 +5,11 @@ app = Flask(__name__)
 # === Utilitários ===
 
 def tamanho_efetivo(mascara: str) -> int:
-    """
-    Conta o tamanho 'efetivo' da máscara, tratando [NUMOP,6] como 6 caracteres.
-    """
+    """Conta o tamanho 'efetivo' da máscara, tratando [NUMOP,6] como 6 caracteres."""
     return len(mascara.replace("[NUMOP,6]", "X" * 6))
 
 def analisar_mascara_errada(mascara_atual: str, expected_len: int, expected_has_numop: bool):
-    """
-    Valida a máscara digitada pelo usuário comparando com os requisitos
-    derivados da máscara correta do cliente (tamanho efetivo e presença de [NUMOP,6]).
-    """
+    """Valida a máscara digitada pelo usuário comparando com os requisitos."""
     erros = []
     if tamanho_efetivo(mascara_atual) != expected_len:
         erros.append(f"❌ Tamanho errado: precisa ter {expected_len} caracteres.")
@@ -39,7 +34,7 @@ def validar_op(op: str) -> bool:
 
 # === Regras de Máscara por Cliente ===
 
-def gerar_mascara_exemplo(cliente, modelo):
+def gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin=None):
     if cliente == "HARMAN":
         prefixo = "VEN10100000"
         total_length = 28
@@ -60,16 +55,14 @@ def gerar_mascara_exemplo(cliente, modelo):
         return digitos + "[NUMOP,6]" + "*" * 13, ""
 
     elif cliente == "MIDEA":
-        # Regra corrigida: **25*****<modelo>*
         if not modelo.isdigit() or len(modelo) != 8:
             return None, "❌ Modelo MIDEA inválido. Deve conter exatamente 8 dígitos."
         mascara = f"**25*****{modelo}*"
         return mascara, ""
 
     elif cliente == "ELECTROLUX":
-        # Regra corrigida: <modelo_sem_A>****25*****
         if not modelo.startswith("A") or len(modelo) != 9:
-            return None, "❌ Modelo ELECTROLUX inválido. Deve ser no formato A13445103."
+            return None, "❌ Modelo ELECTROLUX inválido. Deve ser no formato AXXXXXXXX."
         base = modelo[1:]  # remove o "A"
         mascara = f"{base}****25*****"
         return mascara, ""
@@ -81,19 +74,23 @@ def gerar_mascara_exemplo(cliente, modelo):
         return numero + "V57*P****", ""
 
     elif cliente == "ELGIN":
-        if not modelo.startswith("ARC"):
-            return None, "❌ Modelo ELGIN inválido. Deve começar com 'ARC'."
+        if not codigo_completo_elgin:
+            return None, "❌ Para ELGIN, digite o código completo da etiqueta."
 
-        prefixo = modelo[:3]
-        digitos = ''.join(c for c in modelo if c.isdigit())
-        if len(digitos) < 6:
-            return None, "❌ Modelo ELGIN inválido. Não foi possível extrair os 6 dígitos finais."
+        if not codigo_completo_elgin.startswith("ARC"):
+            return None, "❌ Código ELGIN inválido, deve começar com 'ARC'."
 
-        ultimos6 = digitos[-6:]
-        mascara = f"{prefixo}*******{ultimos6}[NUMOP,6]*****"
-
+        # Extrair sequência especial (7 caracteres após ARC)
+        sequencia_especial = codigo_completo_elgin[3:10]  # posições 3 a 9
+        # 6 caracteres do modelo antes do EBR
+        pos_ebr = codigo_completo_elgin.find("EBR")
+        if pos_ebr == -1 or pos_ebr < 10:
+            return None, "❌ Código ELGIN inválido, não foi possível identificar a posição do EBR."
+        modelo_ref = codigo_completo_elgin[pos_ebr-6:pos_ebr]
+        mascara = f"ARC{sequencia_especial}{modelo_ref}[NUMOP,6]*****"
         if tamanho_efetivo(mascara) != 27:
-            return None, f"❌ Máscara gerada ({mascara}) não tem 27 caracteres efetivos."
+         return None, f"❌ Máscara gerada ({mascara}) não tem 27 caracteres efetivos."
+
         return mascara, ""
 
     else:
@@ -148,15 +145,16 @@ def index():
 @app.route('/gerar', methods=["POST"])
 def gerar():
     cliente = request.form["cliente"]
-    modelo = request.form["modelo"].strip().split(" - ")[0]
     op = request.form["op"].strip().upper()
     tem_mascara = request.form.get("tem_mascara") == "sim"
     mascara_atual = request.form.get("mascara_atual", "").strip()
+    modelo = request.form.get("modelo", "").strip().split(" - ")[0]
+    codigo_completo_elgin = request.form.get("codigo_elgin", "").strip()
 
     if not validar_op(op):
         return jsonify({"erro": "❌ A OP deve conter 5 letras + 6 números."})
 
-    mascara, erro = gerar_mascara_exemplo(cliente, modelo)
+    mascara, erro = gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin)
     if not mascara:
         return jsonify({"erro": erro})
 
