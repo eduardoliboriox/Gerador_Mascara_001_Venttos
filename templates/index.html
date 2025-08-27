@@ -5,67 +5,14 @@
     <title>Gerador de Máscara - Venttos MES</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: white;
-            padding: 20px;
-            max-width: 800px;
-            margin: auto;
-        }
-
-        label {
-            font-weight: bold;
-        }
-
-        select, input[type="text"], textarea {
-            width: 100%;
-            max-width: 400px;
-            padding: 10px;
-            margin: 5px 0 15px 0;
-            box-sizing: border-box;
-        }
-
-        button {
-            background-color: #32406b;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            margin: 5px 5px 5px 0;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 1em;
-        }
-
-        button:hover {
-            background-color: #47527f;
-        }
-
-        .resultado {
-            background-color: #f2f2f2;
-            padding: 15px;
-            margin-top: 20px;
-            width: 100%;
-            max-width: 600px;
-            white-space: pre-wrap;
-            box-sizing: border-box;
-            border-radius: 4px;
-        }
-
-        .exemplo {
-            font-size: 0.9em;
-            color: #444;
-            margin: -10px 0 15px 0;
-        }
-
-        @media (max-width: 600px) {
-            body {
-                padding: 15px;
-            }
-            select, input[type="text"], textarea, button {
-                max-width: 100%;
-                font-size: 1em;
-            }
-        }
+        body { font-family: Arial, sans-serif; background-color: white; padding: 20px; max-width: 800px; margin: auto; }
+        label { font-weight: bold; }
+        select, input[type="text"], textarea { width: 100%; max-width: 400px; padding: 10px; margin: 5px 0 15px 0; box-sizing: border-box; }
+        button { background-color: #32406b; color: white; border: none; padding: 10px 20px; margin: 5px 5px 5px 0; cursor: pointer; border-radius: 4px; font-size: 1em; }
+        button:hover { background-color: #47527f; }
+        .resultado { background-color: #f2f2f2; padding: 15px; margin-top: 20px; width: 100%; max-width: 600px; white-space: pre-wrap; box-sizing: border-box; border-radius: 4px; }
+        .exemplo { font-size: 0.9em; color: #444; margin: -10px 0 15px 0; }
+        @media (max-width: 600px) { body { padding: 15px; } select, input[type="text"], textarea, button { max-width: 100%; font-size: 1em; } }
     </style>
 </head>
 <body>
@@ -81,13 +28,21 @@
 
         <label>Modelo:</label><br>
         <select name="modelo" id="select_modelo"></select>
-        <input type="text" name="modelo" id="input_modelo" style="display:none;"><br>
+        <input type="text" name="modelo" id="input_modelo" style="display:none;" placeholder="Digite o modelo"><br>
+        <button type="button" onclick="adicionarModelo()">Adicionar Modelo</button>
+
+        <!-- Campo para código completo ELGIN -->
+        <div id="div_codigo_elgin" style="display:none;">
+            <label>Código completo ELGIN:</label><br>
+            <input type="text" name="codigo_elgin" id="codigo_elgin" placeholder="ARC2437004417500EBRHRC07052"><br>
+        </div>
+
         <div class="exemplo" id="exemploMascara" style="display:none;"></div>
 
         <label>OP (5 letras + 6 números):</label><br>
         <input type="text" name="op" id="op" required maxlength="11"
-       style="text-transform: uppercase;"
-       oninput="this.value = this.value.toUpperCase();"><br>
+               style="text-transform: uppercase;"
+               oninput="this.value = this.value.toUpperCase();"><br>
 
         <label>Já existe uma máscara?</label><br>
         <input type="radio" name="tem_mascara" value="sim" onclick="mostrarCampoMascara(true)"> Sim
@@ -109,6 +64,7 @@
         const modelosData = {{ modelos | tojson | safe }};
         const selectModelo = document.getElementById("select_modelo");
         const inputModelo = document.getElementById("input_modelo");
+        const divCodigoElgin = document.getElementById("div_codigo_elgin");
         const exemploMascara = document.getElementById("exemploMascara");
 
         function atualizarModelos() {
@@ -131,13 +87,9 @@
                 inputModelo.value = "";
             }
 
-            // Mostrar exemplo para MIDEA
-            if (cliente === "MIDEA") {
-                exemploMascara.style.display = "block";
-                exemploMascara.innerText = "📌 Regra MIDEA: **25*****<modelo>*\nEx: **25*****79037308*";
-            } else {
-                exemploMascara.style.display = "none";
-            }
+            // Removemos todos os textos de exemplo
+            divCodigoElgin.style.display = (cliente === "ELGIN") ? "block" : "none";
+            exemploMascara.style.display = "none";
         }
 
         function mostrarCampoMascara(exibir) {
@@ -173,6 +125,24 @@
             }).catch(() => {
                 alert("❌ Erro ao copiar.");
             });
+        }
+
+        // Função para adicionar modelo dinamicamente
+        function adicionarModelo() {
+            const cliente = document.getElementById("cliente").value;
+            const novoModelo = prompt("Digite o novo modelo para o cliente " + cliente + ":");
+
+            if (novoModelo && novoModelo.trim() !== "") {
+                if (!modelosData[cliente]) {
+                    modelosData[cliente] = [];
+                }
+                modelosData[cliente].push(novoModelo.trim());
+                atualizarModelos();
+                selectModelo.value = novoModelo.trim();
+                alert("✅ Modelo adicionado ao cliente " + cliente + "!");
+            } else {
+                alert("❌ Modelo inválido.");
+            }
         }
 
         document.getElementById("formulario").onsubmit = async function(e) {
