@@ -37,6 +37,12 @@
             <input type="text" name="codigo_elgin" id="codigo_elgin" placeholder="ARC2437004417500EBRHRC07052"><br>
         </div>
 
+        <!-- Campo para código completo LG -->
+        <div id="div_codigo_lg" style="display:none;">
+            <label>Código completo LG - Escaneie uma etiqueta no processo:</label><br>
+            <input type="text" name="codigo_lg" id="codigo_lg" placeholder="86308502V58TP000203"><br>
+        </div>
+
         <div class="exemplo" id="exemploMascara" style="display:none;"></div>
 
         <label>OP (5 letras + 6 números):</label><br>
@@ -65,6 +71,7 @@
         const selectModelo = document.getElementById("select_modelo");
         const inputModelo = document.getElementById("input_modelo");
         const divCodigoElgin = document.getElementById("div_codigo_elgin");
+        const divCodigoLg = document.getElementById("div_codigo_lg");
         const exemploMascara = document.getElementById("exemploMascara");
 
         function atualizarModelos() {
@@ -87,8 +94,8 @@
                 inputModelo.value = "";
             }
 
-            // Removemos todos os textos de exemplo
             divCodigoElgin.style.display = (cliente === "ELGIN") ? "block" : "none";
+            divCodigoLg.style.display = (cliente === "LG") ? "block" : "none";
             exemploMascara.style.display = "none";
         }
 
@@ -127,19 +134,27 @@
             });
         }
 
-        // Função para adicionar modelo dinamicamente
-        function adicionarModelo() {
+        async function adicionarModelo() {
             const cliente = document.getElementById("cliente").value;
             const novoModelo = prompt("Digite o novo modelo para o cliente " + cliente + ":");
 
             if (novoModelo && novoModelo.trim() !== "") {
-                if (!modelosData[cliente]) {
-                    modelosData[cliente] = [];
+                const formData = new FormData();
+                formData.append("cliente", cliente);
+                formData.append("modelo", novoModelo.trim());
+
+                const res = await fetch("/add_modelo", { method: "POST", body: formData });
+                const data = await res.json();
+
+                if (data.ok) {
+                    if (!modelosData[cliente]) modelosData[cliente] = [];
+                    modelosData[cliente].push(novoModelo.trim());
+                    atualizarModelos();
+                    selectModelo.value = novoModelo.trim();
+                    alert("✅ Modelo salvo permanentemente!");
+                } else {
+                    alert("⚠️ " + data.msg);
                 }
-                modelosData[cliente].push(novoModelo.trim());
-                atualizarModelos();
-                selectModelo.value = novoModelo.trim();
-                alert("✅ Modelo adicionado ao cliente " + cliente + "!");
             } else {
                 alert("❌ Modelo inválido.");
             }
@@ -155,11 +170,7 @@
                 formData.set("modelo", selectModelo.value);
             }
 
-            const res = await fetch("/gerar", {
-                method: "POST",
-                body: formData
-            });
-
+            const res = await fetch("/gerar", { method: "POST", body: formData });
             const data = await res.json();
             let out = "";
 
