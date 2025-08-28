@@ -1,15 +1,53 @@
 from flask import Flask, render_template, request, jsonify
+import json, os
 
 app = Flask(__name__)
 
-# === Utilitários ===
+# === Persistência de modelos em arquivo ===
+MODELOS_FILE = "modelos.json"
 
+def carregar_modelos():
+    if os.path.exists(MODELOS_FILE):
+        with open(MODELOS_FILE, "r") as f:
+            return json.load(f)
+    else:
+        # Modelos iniciais padrão
+        return {
+            "HARMAN": ["240105", "240092", "240094"],
+            "TCL": ["883252", "883257", "883258", "883260", "884949", "884954"],
+            "HQ": [f"VEHQ10000T{str(i).zfill(6)}" for i in range(1, 81)],
+            "MIDEA": ["79037248", "79037267", "79037268", "79037308"],
+            "ELECTROLUX": [f"A134451{str(i).zfill(2)}" for i in range(2, 16)],
+            "LG": [
+                "EBR30795409 - RNC5",
+                "EBR40618601 - RNC7",
+                "EBR31724701 - SNH5",
+                "EBR24459501 - SH5A",
+                "EBR44845202 - TOUCH NOVA"
+            ],
+            "ELGIN": [
+                "ARC141295417500",
+                "ARC141295417800",
+                "ARC141295418000",
+                "ARC141295418100",
+                "ARC141295418400",
+                "ARC141295418500",
+                "ARC141295418800",
+                "ARC141295419000",
+                "ARC141295419100",
+                "ARC141295547400"
+            ]
+        }
+
+def salvar_modelos(modelos):
+    with open(MODELOS_FILE, "w") as f:
+        json.dump(modelos, f, indent=2)
+
+# === Utilitários ===
 def tamanho_efetivo(mascara: str) -> int:
-    """Conta o tamanho 'efetivo' da máscara, tratando [NUMOP,6] como 6 caracteres."""
     return len(mascara.replace("[NUMOP,6]", "X" * 6))
 
 def analisar_mascara_errada(mascara_atual: str, expected_len: int, expected_has_numop: bool):
-    """Valida a máscara digitada pelo usuário comparando com os requisitos."""
     erros = []
     if tamanho_efetivo(mascara_atual) != expected_len:
         erros.append(f"❌ Tamanho errado: precisa ter {expected_len} caracteres.")
@@ -33,8 +71,7 @@ def validar_op(op: str) -> bool:
     return letras.isalpha() and numeros.isdigit()
 
 # === Regras de Máscara por Cliente ===
-
-def gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin=None):
+def gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin=None, codigo_completo_lg=None):
     if cliente == "HARMAN":
         prefixo = "VEN10100000"
         total_length = 28
@@ -63,15 +100,33 @@ def gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin=None):
     elif cliente == "ELECTROLUX":
         if not modelo.startswith("A") or len(modelo) != 9:
             return None, "❌ Modelo ELECTROLUX inválido. Deve ser no formato AXXXXXXXX."
-        base = modelo[1:]  # remove o "A"
+        base = modelo[1:]
         mascara = f"{base}****25*****"
         return mascara, ""
 
     elif cliente == "LG":
-        if not modelo.startswith("EBR") or len(modelo) != 11:
-            return None, "❌ Modelo LG inválido. Deve estar no formato EBRxxxxxxxx."
-        numero = modelo[3:]
-        return numero + "V57*P****", ""
+        if not codigo_completo_lg or len(codigo_completo_lg) != 19:
+            return None, "❌ Para LG, o código completo deve ter 19 caracteres."
+
+        codigo = codigo_completo_lg
+
+        pos_v = codigo.find("V")
+        if pos_v < 4:
+            return None, "❌ Código LG inválido, não foi possível identificar o 'V'."
+
+        prefixo = codigo[:pos_v+3]  # até V58
+        sufixo = codigo[pos_v+3:]
+
+        # Substitui T por * (só primeira ocorrência)
+        sufixo = sufixo.replace("T", "*", 1)
+
+        # Troca P + 6 seguintes por P******
+        if "P" in sufixo:
+            pos_p = sufixo.find("P")
+            sufixo = sufixo[:pos_p+1] + "*"*6
+
+        mascara = prefixo + sufixo
+        return mascara, ""
 
     elif cliente == "ELGIN":
         if not codigo_completo_elgin:
@@ -80,66 +135,24 @@ def gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin=None):
         if not codigo_completo_elgin.startswith("ARC"):
             return None, "❌ Código ELGIN inválido, deve começar com 'ARC'."
 
-        # Extrair sequência especial (7 caracteres após ARC)
-        sequencia_especial = codigo_completo_elgin[3:10]  # posições 3 a 9
-        # 6 caracteres do modelo antes do EBR
+        sequencia_especial = codigo_completo_elgin[3:10]
         pos_ebr = codigo_completo_elgin.find("EBR")
         if pos_ebr == -1 or pos_ebr < 10:
             return None, "❌ Código ELGIN inválido, não foi possível identificar a posição do EBR."
         modelo_ref = codigo_completo_elgin[pos_ebr-6:pos_ebr]
         mascara = f"ARC{sequencia_especial}{modelo_ref}[NUMOP,6]*****"
         if tamanho_efetivo(mascara) != 27:
-         return None, f"❌ Máscara gerada ({mascara}) não tem 27 caracteres efetivos."
-
+            return None, f"❌ Máscara gerada ({mascara}) não tem 27 caracteres efetivos."
         return mascara, ""
 
     else:
         return None, f"⚠️ Cliente '{cliente}' ainda não está configurado."
 
 # === Rotas Flask ===
-
 @app.route('/')
 def index():
-    clientes = sorted([
-        "HARMAN", "LG", "TCL", "ELGIN", "HQ",
-        "ELECTROLUX", "MIDEA"
-    ])
-
-    modelos_harman = ["240105", "240092", "240094"]
-    modelos_tcl = sorted(["883252", "883257", "883258", "883260", "884949", "884954"])
-    modelos_hq = [f"VEHQ10000T{str(i).zfill(6)}" for i in range(1, 81)]
-    modelos_midea = sorted(["79037248", "79037267", "79037268", "79037308"])
-    modelos_electrolux = [f"A134451{str(i).zfill(2)}" for i in range(2, 16)]
-    modelos_lg = [
-        "EBR30795409 - RNC5",
-        "EBR40618601 - RNC7",
-        "EBR31724701 - SNH5",
-        "EBR24459501 - SH5A",
-        "EBR44845202 - TOUCH NOVA"
-    ]
-    modelos_elgin = [
-        "ARC141295417500",
-        "ARC141295417800",
-        "ARC141295418000",
-        "ARC141295418100",
-        "ARC141295418400",
-        "ARC141295418500",
-        "ARC141295418800",
-        "ARC141295419000",
-        "ARC141295419100",
-        "ARC141295547400"
-    ]
-
-    modelos = {
-        "HARMAN": modelos_harman,
-        "TCL": modelos_tcl,
-        "HQ": modelos_hq,
-        "MIDEA": modelos_midea,
-        "ELECTROLUX": modelos_electrolux,
-        "LG": modelos_lg,
-        "ELGIN": modelos_elgin
-    }
-
+    clientes = sorted(["HARMAN", "LG", "TCL", "ELGIN", "HQ", "ELECTROLUX", "MIDEA"])
+    modelos = carregar_modelos()
     return render_template("index.html", clientes=clientes, modelos=modelos)
 
 @app.route('/gerar', methods=["POST"])
@@ -150,11 +163,12 @@ def gerar():
     mascara_atual = request.form.get("mascara_atual", "").strip()
     modelo = request.form.get("modelo", "").strip().split(" - ")[0]
     codigo_completo_elgin = request.form.get("codigo_elgin", "").strip()
+    codigo_completo_lg = request.form.get("codigo_lg", "").strip()
 
     if not validar_op(op):
         return jsonify({"erro": "❌ A OP deve conter 5 letras + 6 números."})
 
-    mascara, erro = gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin)
+    mascara, erro = gerar_mascara_exemplo(cliente, modelo, codigo_completo_elgin, codigo_completo_lg)
     if not mascara:
         return jsonify({"erro": erro})
 
@@ -170,6 +184,20 @@ def gerar():
         resultado["comparacao"] = erros if erros else ["✅ A máscara anterior já seguia o padrão."]
 
     return jsonify(resultado)
+
+@app.route('/add_modelo', methods=["POST"])
+def add_modelo():
+    cliente = request.form["cliente"]
+    modelo = request.form["modelo"].strip()
+
+    modelos = carregar_modelos()
+    if cliente not in modelos:
+        modelos[cliente] = []
+    if modelo not in modelos[cliente]:
+        modelos[cliente].append(modelo)
+        salvar_modelos(modelos)
+        return jsonify({"ok": True, "msg": f"Modelo {modelo} adicionado para {cliente}"})
+    return jsonify({"ok": False, "msg": "Modelo já existe"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
